@@ -1,1 +1,3 @@
-# ga-schemes
+`stack install`
+
+`stack exec gabble-exe`
