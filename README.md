@@ -1,6 +1,6 @@
-#gabble
+# gabble
 
-A small genetic algorithms library meant for prototyping various individual representations and genetic operators.
+A small genetic algorithm library meant for prototyping various individual representations and genetic operators.
 
 
 ## Building

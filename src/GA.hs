@@ -125,7 +125,7 @@ select pop = do -- TODO: add selection method here
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
 cross :: Ord a => Fix (ListF a) -> GAContext a (Fix (ListF a))
-cross parents = do -- TODO: add crossover method here
+cross parents = do
     cfg <- ask
     children <- reproduceFrom parents (popSize cfg) 
     return children
