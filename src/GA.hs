@@ -8,6 +8,10 @@ module GA
         SelectionMethod (..),
         HOF,
         random,
+        randomD,
+        randomW,
+        randomBool,
+        mutateBool,
         runGA
     ) where
 
@@ -16,9 +20,10 @@ import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter)
 import Data.Functor.Foldable (Fix (..), ListF (..), cata, hylo, embed)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.Fix (hyloM)
+import Data.Bits ((.&.))
 import qualified Data.Text as T
 import qualified Data.Heap as Heap
-import System.Random.Mersenne.Pure64 (randomInt, PureMT)
+import System.Random.Mersenne.Pure64 (randomInt, PureMT, randomDouble, randomWord)
 
 -- the Hall Of Fame is min-heap of the best individuals
 type HOF a = Heap.MinHeap a
@@ -48,6 +53,26 @@ data GASnapshot a = Snapshot {
   , hofSize :: Int -- max size of the HOF
 } deriving (Show)
 
+random :: (PureMT -> (a, PureMT)) -> GAContext b a
+random f = GAContext $ rws (\_ s -> let (a,s') = f s in (a, s', []))
+
+randomD :: GAContext a Double
+randomD = random randomDouble
+
+randomW :: GAContext a Word
+randomW = random randomWord
+
+randomBool :: GAContext a Bool
+randomBool = do
+    x <- randomW
+    return $ x .&. 1 /= 0
+
+-- mutate a boolean by flipping it
+mutateBool :: Double -> Bool -> GAContext a Bool
+mutateBool p x = do
+    indp <- randomD
+    if indp < p then return $ not x else return x
+
 makePopulation :: Int -> GAContext a [a]
 makePopulation s = hyloM toList randomInd s where
     toList :: AlgebraM (GAContext a) (ListF a) [a]
@@ -67,10 +92,7 @@ mutatePop p pop = do cataM abb pop where
     abb (Cons a mutated) = do
         cfg <- ask
         m <- (mutate cfg) p a
-        return $ cons m mutated
-
-random :: (PureMT -> (a, PureMT)) -> GAContext b a
-random f = GAContext $ rws (\_ s -> let (a,s') = f s in (a, s', []))        
+        return $ cons m mutated      
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
 reproduceFrom :: (Fix (ListF a)) -> Int -> GAContext a (Fix (ListF a))

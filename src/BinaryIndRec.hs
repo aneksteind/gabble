@@ -8,7 +8,6 @@ module BinaryIndRec
     ) where
 
 import GA
-import Common
 import Recursive
 import Data.Functor.Foldable (Fix (..), ListF (..), cata)
 import Data.Functor.Foldable.Exotic (cataM, anaM)

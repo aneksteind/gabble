@@ -9,7 +9,6 @@ module BinaryInd
 
 
 import GA
-import Common
 import Control.Monad (replicateM)
 import Control.Monad.RWS.Lazy (ask)
 
