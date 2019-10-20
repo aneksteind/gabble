@@ -16,7 +16,8 @@ module GA
     ) where
 
 import Recursive
-import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter)
+import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter, MonadState)
+import Control.Monad.RWS.Class (MonadRWS)
 import Data.Functor.Foldable (Fix (..), ListF (..), cata, hylo, embed)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.Fix (hyloM)
@@ -33,7 +34,7 @@ data SelectionMethod = Tournament Int -- | more eventually...
 
 newtype GAContext i a = GAContext {
     ctx :: RWS (GAConfig i) [T.Text] PureMT a
-}    deriving (Functor, Applicative, Monad, MonadReader (GAConfig i), MonadWriter [T.Text])
+}    deriving (Functor, Applicative, MonadRWS (GAConfig i) [T.Text] PureMT, Monad, MonadState PureMT, MonadReader (GAConfig i), MonadWriter [T.Text])
 
 data GAConfig i = Config {
     mutationRateInd :: Double -- the probability an individual is mutated
@@ -184,6 +185,4 @@ runGA = do
                 hofSize = 3
               }
     -- run the genetic algorithm
-    final <- runN (numGenerations cfg) step snapshot
-    -- get and return final information
-    return final
+    runN (numGenerations cfg) step snapshot
