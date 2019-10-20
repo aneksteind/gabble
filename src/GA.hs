@@ -48,18 +48,14 @@ data GASnapshot a = Snapshot {
   , hofSize :: Int -- max size of the HOF
 } deriving (Show)
 
--- creates a population of size `popSize`
--- makePopulation :: Int -> GAContext a (Fix (ListF a))
--- makePopulation size = anaM makeInd size
+makePopulation :: Int -> GAContext a [a]
+makePopulation s = hyloM toList randomInd s where
+    toList :: AlgebraM (GAContext a) (ListF a) [a]
+    toList = return . embed
 
-makeIndList :: Int -> GAContext a [a]
-makeIndList s = hyloM cat ann s where
-    cat :: AlgebraM (GAContext a) (ListF a) [a]
-    cat = (return . embed)
-
-    ann :: CoAlgebraM (GAContext a) (ListF a) Int
-    ann 0 = return Nil
-    ann n = do
+    randomInd :: CoAlgebraM (GAContext a) (ListF a) Int
+    randomInd 0 = return Nil
+    randomInd n = do
         cfg <- ask
         ind <- randomIndividual cfg
         return $ Cons ind (n-1)
@@ -159,7 +155,7 @@ runGA = do
 
     cfg <- ask
     -- initialize the population
-    initialPop <- makeIndList (popSize cfg)
+    initialPop <- makePopulation (popSize cfg)
     -- set up the initial result
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
