@@ -64,7 +64,7 @@ lengthF = cata add where
     add Nil = 0
     add (Cons _ s) = 1 + s
 
--- addNode :: Algebra (ListF a) (Fix (Tree a))
+addNode :: CoAlgebra (Tree a) (Fix (ListF a))
 addNode (Fix Nil) = Empty
 addNode (Fix (Cons x (Fix Nil))) = Leaf x
 addNode xs = Node l r where
