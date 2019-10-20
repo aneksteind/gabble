@@ -19,16 +19,16 @@ main = do
       , mutationRateChr = 0.02
       , crossoverRate = 0.8
       , popSize = 100
-      , mutate = BI.mutate
-      , crossover = BI.crossover
-      , randomIndividual = BI.new
-      , selectionMethod = Tournament 2
-      , fitness = BI.score
+      , mutate = BIR.mutate
+      , crossover = BIR.crossover
+      , randomIndividual = BIR.new
+      , selectionMethod = BIR.select
+      , fitness = BIR.score
       , numGenerations = 200
     }
 
     -- run the genetic algorithm
-    let (finalCtx, progress) = evalRWS (ctx runGA) cfg (pureMT 100) :: (GASnapshot BinaryInd, [T.Text])
+    let (finalCtx, progress) = evalRWS (ctx runGA) cfg (pureMT 100) :: (GASnapshot BinaryIndRec, [T.Text])
 
     -- output the average and best results as they're found
     mapM_ (putStrLn . T.unpack) progress

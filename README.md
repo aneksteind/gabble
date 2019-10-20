@@ -46,7 +46,7 @@ An example of the above can be found in `BinaryInd.hs`:
 data BinaryInd = BI [Bool] deriving (Show)
 
 instance Ord BinaryInd where
-    b1 `compare` b2 = (score b1) `compare` (score b2)
+    b1 `compare` b2 = (fitness b1) `compare` (fitness b2)
 
 instance Eq BinaryInd where
     (BI b1) == (BI b2) = b1 == b2

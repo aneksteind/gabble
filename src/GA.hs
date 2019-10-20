@@ -5,7 +5,6 @@ module GA
         GAConfig (..),
         GASnapshot (..),
         GAContext (..),
-        SelectionMethod (..),
         HOF,
         random,
         randomD,
@@ -16,8 +15,7 @@ module GA
     ) where
 
 import Recursive
-import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter, MonadState)
-import Control.Monad.RWS.Class (MonadRWS)
+import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter)
 import Data.Functor.Foldable (Fix (..), ListF (..), cata, hylo, embed)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.Fix (hyloM)
@@ -30,11 +28,9 @@ import System.Random.Mersenne.Pure64 (randomInt, PureMT, randomDouble, randomWor
 -- the Hall Of Fame is min-heap of the best individuals
 type HOF a = Heap.MinHeap a
 
-data SelectionMethod = Tournament Int -- | more eventually...
-
 newtype GAContext i a = GAContext {
     ctx :: RWS (GAConfig i) [T.Text] PureMT a
-}    deriving (Functor, Applicative, MonadRWS (GAConfig i) [T.Text] PureMT, Monad, MonadState PureMT, MonadReader (GAConfig i), MonadWriter [T.Text])
+}    deriving (Functor, Applicative, Monad, MonadReader (GAConfig i), MonadWriter [T.Text])
 
 data GAConfig i = Config {
     mutationRateInd :: Double -- the probability an individual is mutated
@@ -44,7 +40,7 @@ data GAConfig i = Config {
   , mutate :: Double -> i -> GAContext i i -- the mutation method
   , crossover :: i -> i -> GAContext i i -- the crossover method
   , randomIndividual :: GAContext i i  -- the method to create a new individual
-  , selectionMethod :: SelectionMethod -- the selection method
+  , selectionMethod :: [i] -> GAContext i [i] -- the selection method
   , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
   , numGenerations :: Int -- the number of generations
 }
@@ -114,15 +110,12 @@ reproduceFrom parents n = anaM b n where
         return $ Cons child (m-1)
 
 -- selects a number of individuals from the current population to create the next population
-select :: Ord a => Fix (ListF a) -> GAContext a (Fix (ListF a))
+select :: Ord a => [a] -> GAContext a (Fix (ListF a))
 select pop = do -- TODO: add selection method here
     cfg <- ask
-    let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
+    selected <- (selectionMethod cfg) pop
+    cataM (return . Fix) selected
 
-    -- eventually... selectedParents = (selectionMethod cfg) numToSelect pop
-    let selectedParents = takeF numToSelect $ sortF pop
-
-    return selectedParents
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
 cross :: Ord a => Fix (ListF a) -> GAContext a (Fix (ListF a))
@@ -151,7 +144,7 @@ step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
     cfg <- ask
     -- select parents and create the next generation from them
-    selectedParents <- select $ cata Fix (lastGeneration snapshot)
+    selectedParents <- select $ lastGeneration snapshot
     -- use the set of parents to create a new generation
     crossed <- cross selectedParents
     -- mutate the next generation

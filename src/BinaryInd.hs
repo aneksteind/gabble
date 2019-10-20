@@ -4,13 +4,15 @@ module BinaryInd
         BinaryInd.mutate,
         BinaryInd.crossover,
         new,
-        score
+        score,
+        select
     ) where
 
 
 import GA
 import Control.Monad (replicateM)
 import Control.Monad.RWS.Lazy (ask)
+import Data.List (sort)
 
 data BinaryInd = BI [Bool] deriving (Show)
 
@@ -51,5 +53,14 @@ new = do
 -- count the number of `True` bools in the chromosome
 score :: BinaryInd -> Double
 score (BI bs) = fromIntegral . length . filter id $ bs
+
+select :: Ord a => [a] -> GAContext a [a]
+select pop = do -- TODO: add selection method here
+    cfg <- ask
+
+    let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
+    let selectedParents = take numToSelect . reverse . sort $ pop
+
+    return selectedParents
 
     

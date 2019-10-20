@@ -4,13 +4,15 @@ module BinaryIndRec
         BinaryIndRec.mutate,
         BinaryIndRec.crossover,
         new,
-        score
+        score,
+        select
     ) where
 
 import GA
 import Recursive
 import Data.Functor.Foldable (Fix (..), ListF (..), cata)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
+import Data.List (sort)
 import Control.Monad.RWS.Lazy (ask)
 
 data BinaryIndRec = BIR (Fix (ListF Bool))
@@ -60,3 +62,12 @@ crossover (BIR p1) (BIR p2) = return . BIR =<< anaM f (p1,p2) where
         takeFirst <- randomBool
         let b = if takeFirst then b1 else b2
         return $ Cons b (i1, i2)
+
+select :: Ord a => [a] -> GAContext a [a]
+select pop = do -- TODO: add selection method here
+    cfg <- ask
+
+    let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
+    let selectedParents = take numToSelect . reverse . sort $ pop
+
+    return selectedParents
