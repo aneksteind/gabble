@@ -22,7 +22,7 @@ data GAConfig i = Config {
   , mutate :: Double -> i -> GAContext i i -- the mutation method
   , crossover :: i -> i -> GAContext i i -- the crossover method
   , randomIndividual :: GAContext i i  -- the method to create a new individual
-  , selectionMethod :: SelectionMethod -- the selection method
+  , selectionMethod :: [i] -> GAContext i [i] -- the selection method
   , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
   , numGenerations :: Int -- the number of generations
 }
@@ -82,6 +82,15 @@ new = do
 -- count the number of `True` bools in the chromosome
 fitness :: BinaryInd -> Double
 fitness (BI bs) = fromIntegral . length . filter id $ bs
+
+select :: Ord a => [a] -> GAContext a [a]
+select pop = do -- TODO: add selection method here
+    cfg <- ask
+
+    let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
+    let selectedParents = take numToSelect . reverse . sort $ pop
+
+    return selectedParents
 ```
 
 Once `mutate`, `crossover`, `new`, and `fitness` have been defined, we can optimize for fitness. The GA will take care of initializing the population and evolving that population for a specified number of generations.
@@ -109,7 +118,7 @@ main = do
       , mutate = BI.mutate
       , crossover = BI.crossover
       , randomIndividual = BI.new
-      , selectionMethod = Tournament 2
+      , selectionMethod = BI.select
       , fitness = BI.fitness
       , numGenerations = 200
     }
