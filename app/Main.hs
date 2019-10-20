@@ -1,5 +1,3 @@
-{-# LANGUAGE FlexibleInstances #-}
-
 module Main where
 
 import GA
@@ -24,6 +22,7 @@ main = do
       , mutate = BIR.mutate
       , crossover = BIR.crossover
       , randomIndividual = BIR.new
+      , selectionMethod = Tournament 2
       , fitness = BIR.score
       , numGenerations = 200
     }
