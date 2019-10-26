@@ -25,6 +25,8 @@ data GAConfig i = Config {
   , selectionMethod :: [i] -> GAContext i [i] -- the selection method
   , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
   , numGenerations :: Int -- the number of generations
+  , hofSize :: Int -- the `hofSize` best individuals across all generations
+  , logFunc :: GASnapshot i -> GAContext i () -- function for information sourced from most recent snapshot
 }
 ```
 
@@ -98,14 +100,14 @@ Once `mutate`, `crossover`, `new`, and `fitness` have been defined, we can optim
 ```haskell
 module Main where
 
-import GA
+import GA (evalGA, GAConfig(..), GASnapshot(hof), logHOF)
 import qualified BinaryInd as BI
+import qualified BinaryIndRec as BIR
+import BinaryIndRec (BinaryIndRec)
 import BinaryInd (BinaryInd)
 
 import qualified Data.Heap as Heap
 import qualified Data.Text as T
-import Control.Monad.RWS.Lazy (evalRWS)
-import System.Random.Mersenne.Pure64 (pureMT)
 
 main :: IO ()
 main = do
@@ -115,16 +117,18 @@ main = do
       , mutationRateChr = 0.02
       , crossoverRate = 0.8
       , popSize = 100
-      , mutate = BI.mutate
-      , crossover = BI.crossover
-      , randomIndividual = BI.new
-      , selectionMethod = BI.select
-      , fitness = BI.fitness
+      , mutate = BIR.mutate
+      , crossover = BIR.crossover
+      , randomIndividual = BIR.new
+      , selectionMethod = BIR.select
+      , fitness = BIR.score
       , numGenerations = 200
+      , hofSize = 3
+      , logFunc = logHOF
     }
 
     -- run the genetic algorithm
-    let (finalCtx, progress) = evalRWS (ctx runGA) cfg (pureMT 100) :: (GASnapshot BinaryInd, [T.Text])
+    (finalCtx, progress) <- evalGA cfg
 
     -- output the average and best results as they're found
     mapM_ (putStrLn . T.unpack) progress
