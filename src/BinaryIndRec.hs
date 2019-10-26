@@ -64,7 +64,7 @@ crossover (BIR p1) (BIR p2) = return . BIR =<< anaM f (p1,p2) where
         return $ Cons b (i1, i2)
 
 select :: Ord a => [a] -> GAContext a [a]
-select pop = do -- TODO: add selection method here
+select pop = do
     cfg <- ask
 
     let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)

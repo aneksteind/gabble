@@ -55,7 +55,7 @@ score :: BinaryInd -> Double
 score (BI bs) = fromIntegral . length . filter id $ bs
 
 select :: Ord a => [a] -> GAContext a [a]
-select pop = do -- TODO: add selection method here
+select pop = do
     cfg <- ask
 
     let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)

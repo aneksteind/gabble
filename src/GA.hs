@@ -11,11 +11,16 @@ module GA
         randomW,
         randomBool,
         mutateBool,
-        runGA
+        runGASeed,
+        evalGASeed,
+        evalGA,
+        defaultLog,
+        logHOF
     ) where
 
 import Recursive
-import Control.Monad.RWS.Lazy (RWS, rws, ask, tell, MonadReader, MonadWriter)
+import Control.Monad ((>>))
+import Control.Monad.RWS.Lazy (RWS, rws, runRWS, evalRWS, ask, tell, MonadReader, MonadWriter)
 import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.Fix (hyloM)
@@ -23,7 +28,7 @@ import Data.List (sort)
 import Data.Bits ((.&.))
 import qualified Data.Text as T
 import qualified Data.Heap as Heap
-import System.Random.Mersenne.Pure64 (randomInt, PureMT, randomDouble, randomWord)
+import System.Random.Mersenne.Pure64 (randomInt, pureMT, PureMT, newPureMT, randomDouble, randomWord)
 
 -- the Hall Of Fame is min-heap of the best individuals
 type HOF a = Heap.MinHeap a
@@ -43,12 +48,13 @@ data GAConfig i = Config {
   , selectionMethod :: [i] -> GAContext i [i] -- the selection method
   , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
   , numGenerations :: Int -- the number of generations
+  , hofSize :: Int -- the `hofSize` best individuals across all generations
+  , logFunc :: GASnapshot i -> GAContext i () -- function for information sourced from most recent snapshot
 }
 
 data GASnapshot a = Snapshot {
     lastGeneration :: [a]
   , hof :: HOF a -- the list of top performers, the Hall of Fame (HOF)
-  , hofSize :: Int -- max size of the HOF
 } deriving (Show)
 
 random :: (PureMT -> (a, PureMT)) -> GAContext b a
@@ -111,7 +117,7 @@ reproduceFrom parents n = anaM b n where
 
 -- selects a number of individuals from the current population to create the next population
 select :: Ord a => [a] -> GAContext a (Fix (ListF a))
-select pop = do -- TODO: add selection method here
+select pop = do
     cfg <- ask
     selected <- (selectionMethod cfg) pop
     cataM (return . Fix) selected
@@ -131,14 +137,24 @@ insertHeap hof = cata insert where
     insert (Cons a heap) = Heap.insert a heap
 
 -- updates the HOF by removing the worst-fit individuals from the min-heap
-updateHOF :: Ord a => GASnapshot a -> [a] -> GASnapshot a
-updateHOF snapshot pop = snapshot { hof = newHOF } where
+updateHOF :: Ord a => GASnapshot a -> [a] -> Int -> GAContext a (GASnapshot a)
+updateHOF snapshot pop hofSize = return $ snapshot { hof = newHOF } where
     currentHOF = hof snapshot
     newHOF = case Heap.isEmpty currentHOF of
         -- initialize the HOF with the `hofSize` best individuals
-        True -> Heap.fromAscList . take (hofSize snapshot) . sort $ pop
+        True -> Heap.fromAscList . take hofSize . sort $ pop
         -- update the HOF with the best performers seen thus far
         False -> Heap.drop (length pop) $ foldr (Heap.insert) currentHOF pop
+
+defaultLog :: b -> GAContext a ()
+defaultLog _ = return ()
+
+logHOF :: Ord a => GASnapshot a -> GAContext a ()
+logHOF snap = do
+    cfg <- ask
+    let best = T.pack . show . map (fitness cfg) . Heap.toList $ hof snap :: T.Text
+    let msg = T.concat ["hello: ", best]
+    tell [msg]
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
@@ -150,13 +166,12 @@ step snapshot = do
     -- mutate the next generation
     mutated <- mutatePop (mutationRateInd cfg) crossed
     -- update the HOF
-    let newCtx = updateHOF snapshot mutated
-    -- show intermediate results
-    let best = T.pack . show . map (fitness cfg) . Heap.toList $ hof newCtx :: T.Text
-    let msg = T.concat ["best: ", best]
-    tell [msg]
+    nextSnapshot <- updateHOF snapshot mutated (hofSize cfg)
+    -- log intermediate results
+    let log = logFunc cfg
+    log nextSnapshot
     -- return the mutated generation
-    return $ newCtx {lastGeneration = cata embed mutated}
+    return $ nextSnapshot {lastGeneration = cata embed mutated}
 
 -- a function reminiscent of iterateM that completes
 -- after `n` evaluations, returning the `n`th result
@@ -166,16 +181,26 @@ runN n f a = do
     a' <- f a
     runN (n-1) f a'
 
-runGA :: Ord a => GAContext a (GASnapshot a)
-runGA = do
+runGA' :: Ord a => GAContext a (GASnapshot a)
+runGA' = do
     cfg <- ask
     -- initialize the population
     initialPop <- makePopulation (popSize cfg)
     -- set up the initial result
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
-                hof = Heap.empty :: HOF a,
-                hofSize = 3
+                hof = Heap.empty :: HOF a
               }
     -- run the genetic algorithm
     runN (numGenerations cfg) step snapshot
+
+evalGA :: Ord i => GAConfig i -> IO (GASnapshot i, [T.Text])
+evalGA cfg = do
+    rng <- newPureMT
+    return $ evalGASeed cfg rng
+
+evalGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, [T.Text])
+evalGASeed cfg rng = evalRWS (ctx runGA') cfg rng
+
+runGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, PureMT, [T.Text])
+runGASeed cfg rng = runRWS (ctx runGA') cfg rng

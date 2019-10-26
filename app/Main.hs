@@ -1,6 +1,6 @@
 module Main where
 
-import GA
+import GA (evalGA, GAConfig(..), GASnapshot(hof), defaultLog, logHOF)
 import qualified BinaryInd as BI
 import qualified BinaryIndRec as BIR
 import BinaryIndRec (BinaryIndRec)
@@ -8,8 +8,6 @@ import BinaryInd (BinaryInd)
 
 import qualified Data.Heap as Heap
 import qualified Data.Text as T
-import Control.Monad.RWS.Lazy (evalRWS)
-import System.Random.Mersenne.Pure64 (pureMT)
 
 main :: IO ()
 main = do
@@ -25,10 +23,12 @@ main = do
       , selectionMethod = BIR.select
       , fitness = BIR.score
       , numGenerations = 200
+      , hofSize = 3
+      , logFunc = logHOF
     }
 
     -- run the genetic algorithm
-    let (finalCtx, progress) = evalRWS (ctx runGA) cfg (pureMT 100) :: (GASnapshot BinaryIndRec, [T.Text])
+    (finalCtx, progress) <- evalGA cfg
 
     -- output the average and best results as they're found
     mapM_ (putStrLn . T.unpack) progress
