@@ -19,7 +19,6 @@ module GA
     ) where
 
 import Recursive
-import Control.Monad ((>>))
 import Control.Monad.RWS.Lazy (RWS, rws, runRWS, evalRWS, ask, tell, MonadReader, MonadWriter)
 import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
