@@ -14,7 +14,7 @@ module GA
         runGASeed,
         evalGASeed,
         evalGA,
-        defaultLog,
+        logNothing,
         logHOF
     ) where
 
@@ -55,6 +55,7 @@ data GAConfig i = Config {
 data GASnapshot a = Snapshot {
     lastGeneration :: [a]
   , hof :: HOF a -- the list of top performers, the Hall of Fame (HOF)
+  , generationNumber :: Int
 } deriving (Show)
 
 random :: (PureMT -> (a, PureMT)) -> GAContext b a
@@ -146,19 +147,20 @@ updateHOF snapshot pop hofSize = return $ snapshot { hof = newHOF } where
         -- update the HOF with the best performers seen thus far
         False -> Heap.drop (length pop) $ foldr (Heap.insert) currentHOF pop
 
-defaultLog :: b -> GAContext a ()
-defaultLog _ = return ()
+logNothing :: b -> GAContext a ()
+logNothing _ = return ()
 
 logHOF :: Ord a => GASnapshot a -> GAContext a ()
 logHOF snap = do
     cfg <- ask
+    let currentGen = T.pack . show $ generationNumber snap
     let best = T.pack . show . map (fitness cfg) . Heap.toList $ hof snap :: T.Text
-    let msg = T.concat ["hello: ", best]
+    let msg = T.concat ["best individuals as of generation ", currentGen, ": ", best]
     tell [msg]
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
-    cfg <- ask
+    cfg <- ask 
     -- select parents and create the next generation from them
     selectedParents <- select $ lastGeneration snapshot
     -- use the set of parents to create a new generation
@@ -171,7 +173,10 @@ step snapshot = do
     let log = logFunc cfg
     log nextSnapshot
     -- return the mutated generation
-    return $ nextSnapshot {lastGeneration = cata embed mutated}
+    return $ nextSnapshot {
+        lastGeneration = cata embed mutated,
+        generationNumber = (generationNumber snapshot) + 1
+    }
 
 -- a function reminiscent of iterateM that completes
 -- after `n` evaluations, returning the `n`th result
@@ -189,7 +194,8 @@ runGA' = do
     -- set up the initial result
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
-                hof = Heap.empty :: HOF a
+                hof = Heap.empty :: HOF a,
+                generationNumber = 0
               }
     -- run the genetic algorithm
     runN (numGenerations cfg) step snapshot
