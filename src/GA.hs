@@ -21,7 +21,7 @@ module GA
 
 import Recursive
 import Control.Monad.RWS.Lazy (RWS, rws, runRWS, evalRWS, ask, tell, MonadReader, MonadWriter)
-import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed)
+import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed, project)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.Fix (hyloM)
 import Data.List (sort)
@@ -97,50 +97,27 @@ makePopulation s = hyloM toList randomInd s where
     randomInd n = do
         cfg <- ask
         ind <- randomIndividual cfg
-        return $ Cons ind (n-1)
-
--- mutates individuals in the population with probability `p`
-mutatePop :: Double -> Fix (ListF a) -> GAContext a [a]
-mutatePop mutationRate pop = hyloM toList abb pop where
-    abb :: CoAlgebraM (GAContext a) (ListF a) (Fix (ListF a))
-    abb (Fix Nil) = return Nil
-    abb (Fix (Cons a mutated)) = do
-        Config {mutate} <- ask
-        m <- mutate mutationRate a
-        return $ Cons m mutated      
+        return $ Cons ind (n-1)  
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
-reproduceFrom :: Fix (ListF a) -> Int -> GAContext a (Fix (ListF a))
-reproduceFrom parents n = anaM newChild n where
+crossAndMutate :: [a] -> Int -> Double -> GAContext a [a]
+crossAndMutate parents n mutationRate = hyloM toList newChild n where
     newChild 0 = return Nil
     newChild m = do
-        Config {crossover} <- ask
+        Config {crossover, mutate} <- ask
 
         randInt1 <- randomI
         randInt2 <- randomI
 
-        let p1 = parents !!! (randInt1 `mod` (lengthF parents))
-        let p2 = parents !!! (randInt2 `mod` (lengthF parents))
+        let p1 = parents !! (randInt1 `mod` (length parents))
+        let p2 = parents !! (randInt2 `mod` (length parents))
 
         child <- crossover p1 p2
-        return $ Cons child (m-1)
-
--- selects a number of individuals from the current population to create the next population
-select :: Ord a => [a] -> GAContext a (Fix (ListF a))
-select pop = do
-    Config {selectionMethod} <- ask
-    selected <- selectionMethod pop
-    cataM (return . Fix) selected
-
-
--- repeatedly selects two new parents from `parents` from which `n` total children are produced
-cross :: Ord a => Fix (ListF a) -> GAContext a (Fix (ListF a))
-cross parents = do
-    Config {popSize} <- ask
-    reproduceFrom parents popSize
+        mutatedChild <- mutate mutationRate child
+        return $ Cons mutatedChild (m-1)
 
 -- inserts elements from a list into a heap
-insertHeap :: Ord a => HOF a -> Fix (ListF a) -> HOF a
+insertHeap :: Ord a => HOF a -> [a] -> HOF a
 insertHeap hof = cata insert where
     insert Nil = hof
     insert (Cons a heap) = Heap.insert a heap
@@ -153,7 +130,7 @@ updateHOF snapshot pop hofSize = return $ snapshot { hof = newHOF } where
         -- initialize the HOF with the `hofSize` best individuals
         True -> Heap.fromAscList . take hofSize . sort $ pop
         -- update the HOF with the best performers seen thus far
-        False -> Heap.drop (length pop) $ foldr (Heap.insert) currentHOF pop
+        False -> Heap.drop (length pop) $ insertHeap currentHOF pop
 
 logNothing :: b -> GAContext a ()
 logNothing _ = return ()
@@ -168,20 +145,18 @@ logHOF snap = do
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
-    Config {mutationRateInd, hofSize, logFunc} <- ask 
+    Config {mutationRateInd, hofSize, logFunc, popSize, selectionMethod} <- ask 
     -- select parents and create the next generation from them
-    selectedParents <- select $ lastGeneration snapshot
-    -- use the set of parents to create a new generation
-    crossed <- cross selectedParents
-    -- mutate the next generation
-    mutated <- mutatePop mutationRateInd crossed
+    selectedParents <- selectionMethod $ lastGeneration snapshot
+    -- use the set of parents to create and mutate a new generation
+    children <- crossAndMutate selectedParents popSize mutationRateInd
     -- update the HOF
-    nextSnapshot <- updateHOF snapshot mutated hofSize
+    nextSnapshot <- updateHOF snapshot children hofSize
     -- log intermediate results
     logFunc nextSnapshot
     -- return the mutated generation
     return $ nextSnapshot {
-        lastGeneration = cata embed mutated,
+        lastGeneration = children,
         generationNumber = (generationNumber snapshot) + 1
     }
 
