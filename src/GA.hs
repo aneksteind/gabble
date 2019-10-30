@@ -1,4 +1,5 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
+{-# LANGUAGE NamedFieldPuns #-}
 
 module GA
     ( 
@@ -34,7 +35,13 @@ type HOF a = Heap.MinHeap a
 
 newtype GAContext i a = GAContext {
     ctx :: RWS (GAConfig i) [T.Text] PureMT a
-}    deriving (Functor, Applicative, Monad, MonadReader (GAConfig i), MonadWriter [T.Text])
+} deriving (
+        Functor, 
+        Applicative, 
+        Monad, 
+        MonadReader (GAConfig i), 
+        MonadWriter [T.Text]
+    )
 
 data GAConfig i = Config {
     mutationRateInd :: Double -- the probability an individual is mutated
@@ -53,12 +60,15 @@ data GAConfig i = Config {
 
 data GASnapshot a = Snapshot {
     lastGeneration :: [a]
-  , hof :: HOF a -- the list of top performers, the Hall of Fame (HOF)
+  , hof :: HOF a -- the collection of top performers, the Hall of Fame (HOF)
   , generationNumber :: Int
 } deriving (Show)
 
 random :: (PureMT -> (a, PureMT)) -> GAContext b a
 random f = GAContext $ rws (\_ s -> let (a,s') = f s in (a, s', []))
+
+randomI :: GAContext a Int
+randomI = random randomInt
 
 randomD :: GAContext a Double
 randomD = random randomDouble
@@ -91,44 +101,43 @@ makePopulation s = hyloM toList randomInd s where
 
 -- mutates individuals in the population with probability `p`
 mutatePop :: Double -> Fix (ListF a) -> GAContext a [a]
-mutatePop p pop = hyloM toList abb pop where
+mutatePop mutationRate pop = hyloM toList abb pop where
     abb :: CoAlgebraM (GAContext a) (ListF a) (Fix (ListF a))
     abb (Fix Nil) = return Nil
     abb (Fix (Cons a mutated)) = do
-        cfg <- ask
-        m <- (mutate cfg) p a
+        Config {mutate} <- ask
+        m <- mutate mutationRate a
         return $ Cons m mutated      
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
-reproduceFrom :: (Fix (ListF a)) -> Int -> GAContext a (Fix (ListF a))
-reproduceFrom parents n = anaM b n where
-    b 0 = return Nil
-    b m = do
-        cfg <- ask
+reproduceFrom :: Fix (ListF a) -> Int -> GAContext a (Fix (ListF a))
+reproduceFrom parents n = anaM newChild n where
+    newChild 0 = return Nil
+    newChild m = do
+        Config {crossover} <- ask
 
-        randInt1 <- random randomInt
-        randInt2 <- random randomInt
+        randInt1 <- randomI
+        randInt2 <- randomI
 
         let p1 = parents !!! (randInt1 `mod` (lengthF parents))
         let p2 = parents !!! (randInt2 `mod` (lengthF parents))
 
-        child <- (crossover cfg) p1 p2
+        child <- crossover p1 p2
         return $ Cons child (m-1)
 
 -- selects a number of individuals from the current population to create the next population
 select :: Ord a => [a] -> GAContext a (Fix (ListF a))
 select pop = do
-    cfg <- ask
-    selected <- (selectionMethod cfg) pop
+    Config {selectionMethod} <- ask
+    selected <- selectionMethod pop
     cataM (return . Fix) selected
 
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
 cross :: Ord a => Fix (ListF a) -> GAContext a (Fix (ListF a))
 cross parents = do
-    cfg <- ask
-    children <- reproduceFrom parents (popSize cfg) 
-    return children
+    Config {popSize} <- ask
+    reproduceFrom parents popSize
 
 -- inserts elements from a list into a heap
 insertHeap :: Ord a => HOF a -> Fix (ListF a) -> HOF a
@@ -151,26 +160,25 @@ logNothing _ = return ()
 
 logHOF :: Ord a => GASnapshot a -> GAContext a ()
 logHOF snap = do
-    cfg <- ask
+    Config {fitness} <- ask
     let currentGen = T.pack . show $ generationNumber snap
-    let best = T.pack . show . map (fitness cfg) . Heap.toList $ hof snap :: T.Text
+    let best = T.pack . show . map fitness . Heap.toList $ hof snap :: T.Text
     let msg = T.concat ["best individuals as of generation ", currentGen, ": ", best]
     tell [msg]
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
-    cfg <- ask 
+    Config {mutationRateInd, hofSize, logFunc} <- ask 
     -- select parents and create the next generation from them
     selectedParents <- select $ lastGeneration snapshot
     -- use the set of parents to create a new generation
     crossed <- cross selectedParents
     -- mutate the next generation
-    mutated <- mutatePop (mutationRateInd cfg) crossed
+    mutated <- mutatePop mutationRateInd crossed
     -- update the HOF
-    nextSnapshot <- updateHOF snapshot mutated (hofSize cfg)
+    nextSnapshot <- updateHOF snapshot mutated hofSize
     -- log intermediate results
-    let log = logFunc cfg
-    log nextSnapshot
+    logFunc nextSnapshot
     -- return the mutated generation
     return $ nextSnapshot {
         lastGeneration = cata embed mutated,
@@ -187,9 +195,9 @@ runN n f a = do
 
 runGA' :: Ord a => GAContext a (GASnapshot a)
 runGA' = do
-    cfg <- ask
+    Config {numGenerations, popSize} <- ask
     -- initialize the population
-    initialPop <- makePopulation (popSize cfg)
+    initialPop <- makePopulation popSize
     -- set up the initial result
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
@@ -197,7 +205,7 @@ runGA' = do
                 generationNumber = 0
               }
     -- run the genetic algorithm
-    runN (numGenerations cfg) step snapshot
+    runN numGenerations step snapshot
 
 evalGA :: Ord i => GAConfig i -> IO (GASnapshot i, [T.Text])
 evalGA cfg = do
