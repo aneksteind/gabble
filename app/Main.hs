@@ -1,6 +1,6 @@
 module Main where
 
-import GA (evalGA, GAConfig(..), GASnapshot(hof), logHOF)
+import GA (evalGA, GAConfig(..), GASnapshot(hof), logHOF, logNothing)
 import qualified BinaryInd as BI
 import qualified BinaryIndRec as BIR
 import BinaryIndRec (BinaryIndRec)

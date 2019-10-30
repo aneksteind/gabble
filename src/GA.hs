@@ -100,11 +100,11 @@ makePopulation s = hyloM toList randomInd s where
         return $ Cons ind (n-1)  
 
 -- repeatedly selects two new parents from `parents` from which `n` total children are produced
-crossAndMutate :: [a] -> Int -> Double -> GAContext a [a]
-crossAndMutate parents n mutationRate = hyloM toList newChild n where
+crossAndMutate :: [a] -> Int -> GAContext a [a]
+crossAndMutate parents n = hyloM toList newChild n where
     newChild 0 = return Nil
     newChild m = do
-        Config {crossover, mutate} <- ask
+        Config {crossover, mutate, mutationRateInd} <- ask
 
         randInt1 <- randomI
         randInt2 <- randomI
@@ -113,7 +113,7 @@ crossAndMutate parents n mutationRate = hyloM toList newChild n where
         let p2 = parents !! (randInt2 `mod` (length parents))
 
         child <- crossover p1 p2
-        mutatedChild <- mutate mutationRate child
+        mutatedChild <- mutate mutationRateInd child
         return $ Cons mutatedChild (m-1)
 
 -- inserts elements from a list into a heap
@@ -124,32 +124,32 @@ insertHeap hof = cata insert where
 
 -- updates the HOF by removing the worst-fit individuals from the min-heap
 updateHOF :: Ord a => GASnapshot a -> [a] -> Int -> GAContext a (GASnapshot a)
-updateHOF snapshot pop hofSize = return $ snapshot { hof = newHOF } where
-    currentHOF = hof snapshot
-    newHOF = case Heap.isEmpty currentHOF of
+updateHOF snap@Snapshot{hof} pop hofSize = return $ snap { hof = newHOF } where
+    newHOF = case Heap.isEmpty hof of
         -- initialize the HOF with the `hofSize` best individuals
         True -> Heap.fromAscList . take hofSize . sort $ pop
-        -- update the HOF with the best performers seen thus far
-        False -> Heap.drop (length pop) $ insertHeap currentHOF pop
+        -- update the HOF by adding this generation 
+        -- then removing worst `popSize` performers
+        False -> Heap.drop (length pop) $ insertHeap hof pop
 
 logNothing :: b -> GAContext a ()
-logNothing _ = return ()
+logNothing = const $ return ()
 
 logHOF :: Ord a => GASnapshot a -> GAContext a ()
-logHOF snap = do
+logHOF Snapshot{hof, generationNumber} = do
     Config {fitness} <- ask
-    let currentGen = T.pack . show $ generationNumber snap
-    let best = T.pack . show . map fitness . Heap.toList $ hof snap :: T.Text
+    let currentGen = T.pack $ show generationNumber
+    let best = T.pack . show . map fitness $ Heap.toList hof :: T.Text
     let msg = T.concat ["best individuals as of generation ", currentGen, ": ", best]
     tell [msg]
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step snapshot = do
-    Config {mutationRateInd, hofSize, logFunc, popSize, selectionMethod} <- ask 
+    Config {hofSize, logFunc, popSize, selectionMethod} <- ask 
     -- select parents and create the next generation from them
     selectedParents <- selectionMethod $ lastGeneration snapshot
     -- use the set of parents to create and mutate a new generation
-    children <- crossAndMutate selectedParents popSize mutationRateInd
+    children <- crossAndMutate selectedParents popSize
     -- update the HOF
     nextSnapshot <- updateHOF snapshot children hofSize
     -- log intermediate results
