@@ -74,7 +74,7 @@ select :: Ord a => Vector a -> GAContext a (Vector a)
 select pop = do
     Config{crossoverRate, popSize} <- ask
 
-    let numToSelect = round $ (1.0 - crossoverRate) * (fromIntegral popSize)
+    let numToSelect = round $ 0.2 * (fromIntegral popSize)
     let selectedParents = V.take numToSelect . V.reverse $ V.modify sort pop
 
     return selectedParents
