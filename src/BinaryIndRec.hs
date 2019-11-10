@@ -14,6 +14,7 @@ import Data.Functor.Foldable (Fix (..), ListF (..), cata)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Data.List (sort)
 import Control.Monad.RWS.Lazy (ask)
+import Data.Vector (Vector(..), fromList, toList)
 
 data BinaryIndRec = BIR (Fix (ListF Bool))
 
@@ -63,11 +64,11 @@ crossover (BIR p1) (BIR p2) = return . BIR =<< anaM f (p1,p2) where
         let b = if takeFirst then b1 else b2
         return $ Cons b (i1, i2)
 
-select :: Ord a => [a] -> GAContext a [a]
+select :: Ord a => Vector a -> GAContext a (Vector a)
 select pop = do
     cfg <- ask
 
     let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
-    let selectedParents = take numToSelect . reverse . sort $ pop
+    let selectedParents = fromList . take numToSelect . reverse . sort $ toList pop
 
     return selectedParents

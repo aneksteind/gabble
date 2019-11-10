@@ -1,5 +1,6 @@
 {-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE TypeFamilies #-}
 
 module GA
     ( 
@@ -19,28 +20,41 @@ module GA
         logHOF
     ) where
 
-import Recursive
-import Control.Monad.RWS.Lazy (RWS, rws, runRWS, evalRWS, ask, tell, MonadReader, MonadWriter)
-import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed, project)
-import Data.Functor.Foldable.Exotic (cataM, anaM)
-import Data.Fix (hyloM)
-import Data.List (sort)
+import Recursive (CoAlgebraM, AlgebraM)
+import Control.Applicative ((<$>))
+import Control.Monad.RWS.Lazy (RWS, runRWS, evalRWS, ask, tell, get, put, MonadReader, MonadWriter, MonadState)
+import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed, project, Base(..), Recursive, Corecursive)
+import Data.Fix (hyloM, anaM)
+import Data.List(intersperse)
 import Data.Bits ((.&.))
 import qualified Data.Text as T
 import qualified Data.Heap as Heap
 import System.Random.Mersenne.Pure64 (randomInt, pureMT, PureMT, newPureMT, randomDouble, randomWord)
+import qualified Data.Vector as V
+import Data.Vector (Vector(..), (!))
 
 -- the Hall Of Fame is min-heap of the best individuals
 type HOF a = Heap.MinHeap a
 
-newtype GAContext i a = GAContext {
-    ctx :: RWS (GAConfig i) [T.Text] PureMT a
+type instance Base (Vector a) = ListF a
+
+instance Recursive (Vector a) where
+  project xs | V.null xs = Nil
+             | otherwise = Cons (V.head xs) (V.tail xs)
+  
+instance Corecursive (Vector a) where
+  embed (Cons x xs) = x `V.cons` xs
+  embed Nil = V.empty
+
+newtype GAContext indv a = GAContext {
+    ctx :: RWS (GAConfig indv) [T.Text] PureMT a
 } deriving (
         Functor, 
         Applicative, 
         Monad, 
-        MonadReader (GAConfig i), 
-        MonadWriter [T.Text]
+        MonadReader (GAConfig indv), 
+        MonadWriter [T.Text],
+        MonadState PureMT
     )
 
 data GAConfig i = Config {
@@ -51,7 +65,7 @@ data GAConfig i = Config {
   , mutate :: Double -> i -> GAContext i i -- the mutation method
   , crossover :: i -> i -> GAContext i i -- the crossover method
   , randomIndividual :: GAContext i i  -- the method to create a new individual
-  , selectionMethod :: [i] -> GAContext i [i] -- the selection method
+  , selectionMethod :: Vector i -> GAContext i (Vector i) -- the selection method
   , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
   , numGenerations :: Int -- the number of generations
   , hofSize :: Int -- the `hofSize` best individuals across all generations
@@ -59,13 +73,17 @@ data GAConfig i = Config {
 }
 
 data GASnapshot a = Snapshot {
-    lastGeneration :: [a]
+    lastGeneration :: Vector a
   , hof :: HOF a -- the collection of top performers, the Hall of Fame (HOF)
   , generationNumber :: Int
 } deriving (Show)
 
 random :: (PureMT -> (a, PureMT)) -> GAContext b a
-random f = GAContext $ rws (\_ s -> let (a,s') = f s in (a, s', []))
+random f = do
+    s <- get
+    let (a,s') = f s
+    put s'
+    return a
 
 randomI :: GAContext a Int
 randomI = random randomInt
@@ -77,60 +95,63 @@ randomW :: GAContext a Word
 randomW = random randomWord
 
 randomBool :: GAContext a Bool
-randomBool = do
-    x <- randomW
-    return $ x .&. 1 /= 0
+randomBool = fmap (\x -> x .&. 1 /= 0) randomW
 
 -- mutate a boolean by flipping it
 mutateBool :: Double -> Bool -> GAContext a Bool
 mutateBool p x = do
     indp <- randomD
-    if indp < p then return $ not x else return x
+    return $ if indp < p then not x else x
 
-toList :: AlgebraM (GAContext a) (ListF a) [a]
-toList = return . embed
+-- converts Fix (ListF a) into Vector a
+toVector :: AlgebraM (GAContext a) (ListF a) (Vector a)
+toVector = return . embed
 
-makePopulation :: Int -> GAContext a [a]
-makePopulation s = hyloM toList randomInd s where
-    randomInd :: CoAlgebraM (GAContext a) (ListF a) Int
-    randomInd 0 = return Nil
-    randomInd n = do
-        cfg <- ask
-        ind <- randomIndividual cfg
-        return $ Cons ind (n-1)  
+makePopulation :: Int -> GAContext a (Vector a)
+makePopulation s = hyloM toVector addRandomInd s where
+    addRandomInd :: CoAlgebraM (GAContext a) (ListF a) Int
+    addRandomInd 0 = return Nil
+    addRandomInd n = do
+        Config{randomIndividual} <- ask
+        ind <- randomIndividual
+        return $ Cons ind (n-1)
 
--- repeatedly selects two new parents from `parents` from which `n` total children are produced
-crossAndMutate :: [a] -> Int -> GAContext a [a]
-crossAndMutate parents n = hyloM toList newChild n where
-    newChild 0 = return Nil
-    newChild m = do
-        Config {crossover, mutate, mutationRateInd} <- ask
+-- repeatedly selects two new parents from `parents` from
+-- which `n` total children are produced
+crossAndMutate :: (Vector a) -> Int -> GAContext a (Vector a)
+crossAndMutate parents n = hyloM toVector (newChild parents) n
 
-        randInt1 <- randomI
-        randInt2 <- randomI
+-- selects two parents to breed, a child is born, joy to the world
+newChild :: (Vector a) -> CoAlgebraM (GAContext a) (ListF a) Int
+newChild parents 0 = return Nil
+newChild parents m = do
+    Config {crossover, mutate, mutationRateInd} <- ask
 
-        let p1 = parents !! (randInt1 `mod` (length parents))
-        let p2 = parents !! (randInt2 `mod` (length parents))
+    randInt1 <- randomI
+    randInt2 <- randomI
 
-        child <- crossover p1 p2
-        mutatedChild <- mutate mutationRateInd child
-        return $ Cons mutatedChild (m-1)
+    let p1 = parents ! (randInt1 `mod` (length parents))
+    let p2 = parents ! (randInt2 `mod` (length parents))
+
+    child <- crossover p1 p2
+    mutatedChild <- mutate mutationRateInd child
+    return $ Cons mutatedChild (m-1)
 
 -- inserts elements from a list into a heap
-insertHeap :: Ord a => HOF a -> [a] -> HOF a
+insertHeap :: Ord a => HOF a -> (Vector a) -> HOF a
 insertHeap hof = cata insert where
     insert Nil = hof
     insert (Cons a heap) = Heap.insert a heap
 
 -- updates the HOF by removing the worst-fit individuals from the min-heap
-updateHOF :: Ord a => GASnapshot a -> [a] -> Int -> GAContext a (GASnapshot a)
-updateHOF snap@Snapshot{hof} pop hofSize = return $ snap { hof = newHOF } where
-    newHOF = case Heap.isEmpty hof of
-        -- initialize the HOF with the `hofSize` best individuals
-        True -> Heap.fromAscList . take hofSize . sort $ pop
-        -- update the HOF by adding this generation 
-        -- then removing worst `popSize` performers
-        False -> Heap.drop (length pop) $ insertHeap hof pop
+updateHOF :: Ord a => HOF a -> Vector a -> Int -> GAContext a (HOF a)
+updateHOF hof pop hofSize = return newHOF where
+    newHOF = if Heap.isEmpty hof
+            -- initialize the HOF with the `hofSize` best individuals
+            then Heap.fromList . take hofSize $ V.toList pop
+            -- update the HOF by adding this generation 
+            -- then removing worst `popSize` performers
+            else Heap.drop (length pop) $ insertHeap hof pop
 
 logNothing :: b -> GAContext a ()
 logNothing = const $ return ()
@@ -138,27 +159,29 @@ logNothing = const $ return ()
 logHOF :: Ord a => GASnapshot a -> GAContext a ()
 logHOF Snapshot{hof, generationNumber} = do
     Config {fitness} <- ask
-    let currentGen = T.pack $ show generationNumber
-    let best = T.pack . show . map fitness $ Heap.toList hof :: T.Text
-    let msg = T.concat ["best individuals as of generation ", currentGen, ": ", best]
+    let best = map (T.pack . show . fitness) $ Heap.toList hof
+    let msg = T.concat $ intersperse (T.pack ",") best
     tell [msg]
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
-step snapshot = do
+step (Snapshot lastGen hof genNumber) = do
     Config {hofSize, logFunc, popSize, selectionMethod} <- ask 
     -- select parents and create the next generation from them
-    selectedParents <- selectionMethod $ lastGeneration snapshot
+    selectedParents <- selectionMethod lastGen
     -- use the set of parents to create and mutate a new generation
     children <- crossAndMutate selectedParents popSize
     -- update the HOF
-    nextSnapshot <- updateHOF snapshot children hofSize
+    updatedHOF <- updateHOF hof children hofSize
+
+    let nextSnapshot = Snapshot{
+        lastGeneration = children,
+        hof = updatedHOF,
+        generationNumber = genNumber + 1
+    }
     -- log intermediate results
     logFunc nextSnapshot
     -- return the mutated generation
-    return $ nextSnapshot {
-        lastGeneration = children,
-        generationNumber = (generationNumber snapshot) + 1
-    }
+    return nextSnapshot
 
 -- a function reminiscent of iterateM that completes
 -- after `n` evaluations, returning the `n`th result
@@ -170,13 +193,15 @@ runN n f a = do
 
 runGA' :: Ord a => GAContext a (GASnapshot a)
 runGA' = do
-    Config {numGenerations, popSize} <- ask
+    Config {numGenerations, popSize, hofSize} <- ask
     -- initialize the population
     initialPop <- makePopulation popSize
+    -- set up the initial Hall of Fame
+    initialHOF <- updateHOF (Heap.empty :: HOF a) initialPop hofSize
     -- set up the initial result
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
-                hof = Heap.empty :: HOF a,
+                hof = initialHOF,
                 generationNumber = 0
               }
     -- run the genetic algorithm

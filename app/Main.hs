@@ -1,6 +1,8 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module Main where
 
-import GA (evalGA, GAConfig(..), GASnapshot(hof), logHOF, logNothing)
+import GA (evalGA, GAConfig(..), GASnapshot(..), logHOF, logNothing)
 import qualified BinaryInd as BI
 import qualified BinaryIndRec as BIR
 import BinaryIndRec (BinaryIndRec)
@@ -17,22 +19,19 @@ main = do
       , mutationRateChr = 0.02
       , crossoverRate = 0.8
       , popSize = 100
-      , mutate = BIR.mutate
-      , crossover = BIR.crossover
-      , randomIndividual = BIR.new
-      , selectionMethod = BIR.select
-      , fitness = BIR.score
+      , mutate = BI.mutate
+      , crossover = BI.crossover
+      , randomIndividual = BI.new
+      , selectionMethod = BI.select
+      , fitness = BI.score
       , numGenerations = 200
-      , hofSize = 3
+      , hofSize = 1
       , logFunc = logHOF
     }
 
     -- run the genetic algorithm
-    (finalCtx, progress) <- evalGA cfg
+    (finalSnapshot, progress) <- evalGA cfg
 
     -- output the average and best results as they're found
     mapM_ (putStrLn . T.unpack) progress
-
-    putStr "Final best scores: "
-    putStrLn . show . map (fitness cfg) . reverse . Heap.toList . hof $ finalCtx
 
