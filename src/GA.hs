@@ -21,10 +21,9 @@ module GA
     ) where
 
 import Recursive (CoAlgebraM, AlgebraM)
-import Control.Applicative ((<$>))
 import Control.Monad.RWS.Lazy (RWS, runRWS, evalRWS, ask, tell, get, put, MonadReader, MonadWriter, MonadState)
-import Data.Functor.Foldable (Fix (..), ListF (..), cata, embed, project, Base(..), Recursive, Corecursive)
-import Data.Fix (hyloM, anaM)
+import Data.Functor.Foldable (ListF (..), cata, embed, project, Base(..), Recursive, Corecursive)
+import Data.Fix (hyloM)
 import Data.List(intersperse)
 import Data.Bits ((.&.))
 import qualified Data.Text as T
@@ -58,26 +57,42 @@ newtype GAContext indv a = GAContext {
     )
 
 data GAConfig i = Config {
-    mutationRateInd :: Double -- the probability an individual is mutated
-  , mutationRateChr :: Double -- the probability a chromosome of an individual is mutated
-  , crossoverRate :: Double -- the percentage of the population that gets replaced through recombination
-  , popSize :: Int -- the population size
-  , mutate :: Double -> i -> GAContext i i -- the mutation method
-  , crossover :: i -> i -> GAContext i i -- the crossover method
-  , randomIndividual :: GAContext i i  -- the method to create a new individual
-  , selectionMethod :: Vector i -> GAContext i (Vector i) -- the selection method
-  , fitness :: i -> Double -- the fitness function (higher fitness is preferred)
-  , numGenerations :: Int -- the number of generations
-  , hofSize :: Int -- the `hofSize` best individuals across all generations
-  , logFunc :: GASnapshot i -> GAContext i () -- function for information sourced from most recent snapshot
+    -- the probability an individual is mutated
+    mutationRateInd :: Double 
+    -- the probability a chromosome of an individual is mutated
+  , mutationRateChr :: Double 
+    -- the percentage of the population that gets replaced through recombination
+  , crossoverRate :: Double 
+    -- the population size
+  , popSize :: Int 
+    -- the mutation method
+  , mutate :: i -> GAContext i i 
+    -- the crossover method
+  , crossover :: i -> i -> GAContext i i 
+    -- the method to create a new individual
+  , randomIndividual :: GAContext i i  
+    -- the selection method
+  , selectionMethod :: Vector i -> GAContext i (Vector i) 
+    -- the fitness function (higher fitness is preferred)
+  , fitness :: i -> Double 
+    -- the number of generations
+  , numGenerations :: Int 
+    -- the `hofSize` best individuals across all generations
+  , hofSize :: Int 
+    -- function for information sourced from most recent snapshot
+  , logFunc :: GASnapshot i -> GAContext i () 
 }
 
 data GASnapshot a = Snapshot {
+    -- the collection of individuals from the last generation
     lastGeneration :: Vector a
-  , hof :: HOF a -- the collection of top performers, the Hall of Fame (HOF)
+    -- the collection of top performers, the Hall of Fame (HOF)
+  , hof :: HOF a 
+    -- the current generation id
   , generationNumber :: Int
 } deriving (Show)
 
+-- applies a random function within a context
 random :: (PureMT -> (a, PureMT)) -> GAContext b a
 random f = do
     s <- get
@@ -107,13 +122,16 @@ mutateBool p x = do
 toVector :: AlgebraM (GAContext a) (ListF a) (Vector a)
 toVector = return . embed
 
+-- creates a vector of random individuals
 makePopulation :: Int -> GAContext a (Vector a)
 makePopulation s = hyloM toVector addRandomInd s where
+    -- creates a random individual and add it to the collection
     addRandomInd :: CoAlgebraM (GAContext a) (ListF a) Int
     addRandomInd 0 = return Nil
     addRandomInd n = do
-        Config{randomIndividual} <- ask
-        ind <- randomIndividual
+        -- get a new, random individual
+        ind <- randomIndividual =<< ask
+        -- add it to the collection
         return $ Cons ind (n-1)
 
 -- repeatedly selects two new parents from `parents` from
@@ -125,16 +143,19 @@ crossAndMutate parents n = hyloM toVector (newChild parents) n
 newChild :: (Vector a) -> CoAlgebraM (GAContext a) (ListF a) Int
 newChild parents 0 = return Nil
 newChild parents m = do
-    Config {crossover, mutate, mutationRateInd} <- ask
-
-    randInt1 <- randomI
-    randInt2 <- randomI
-
-    let p1 = parents ! (randInt1 `mod` (length parents))
-    let p2 = parents ! (randInt2 `mod` (length parents))
-
+    -- get mutation and crossover methods
+    Config {crossover, mutate} <- ask
+    -- get two random indices
+    i <- randomI
+    j <- randomI
+    -- from the two indices, grab two parents
+    let p1 = parents ! (i `mod` (length parents))
+    let p2 = parents ! (j `mod` (length parents))
+    -- make a child
     child <- crossover p1 p2
-    mutatedChild <- mutate mutationRateInd child
+    -- mutate the child
+    mutatedChild <- mutate child
+    -- add the child to the collection
     return $ Cons mutatedChild (m-1)
 
 -- inserts elements from a list into a heap
@@ -158,10 +179,14 @@ logNothing = const $ return ()
 
 logHOF :: Ord a => GASnapshot a -> GAContext a ()
 logHOF Snapshot{hof, generationNumber} = do
+    -- get the fitness function
     Config {fitness} <- ask
+    -- get string representations of the best individuals
     let best = map (T.pack . show . fitness) $ Heap.toList hof
-    let msg = T.concat $ intersperse (T.pack ",") best
-    tell [msg]
+    -- craft the comma-separated line
+    let msg = [T.concat $ intersperse (T.pack ",") best]
+    -- log the line
+    tell msg
 
 step :: Ord a => GASnapshot a -> GAContext a (GASnapshot a)
 step (Snapshot lastGen hof genNumber) = do
@@ -172,7 +197,7 @@ step (Snapshot lastGen hof genNumber) = do
     children <- crossAndMutate selectedParents popSize
     -- update the HOF
     updatedHOF <- updateHOF hof children hofSize
-
+    -- construct the new snapshot
     let nextSnapshot = Snapshot{
         lastGeneration = children,
         hof = updatedHOF,
@@ -207,13 +232,14 @@ runGA' = do
     -- run the genetic algorithm
     runN numGenerations step snapshot
 
+-- from a new rng, run the genetic algorithm
 evalGA :: Ord i => GAConfig i -> IO (GASnapshot i, [T.Text])
-evalGA cfg = do
-    rng <- newPureMT
-    return $ evalGASeed cfg rng
+evalGA cfg = newPureMT >>= (return . evalGASeed cfg)
 
+-- from a user-supplied rng, run the genetic algorithm
 evalGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, [T.Text])
 evalGASeed cfg rng = evalRWS (ctx runGA') cfg rng
 
+-- from a user-supplied rng, run the genetic algorithm and return the updated seed
 runGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, PureMT, [T.Text])
 runGASeed cfg rng = runRWS (ctx runGA') cfg rng

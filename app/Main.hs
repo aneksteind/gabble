@@ -32,6 +32,6 @@ main = do
     -- run the genetic algorithm
     (finalSnapshot, progress) <- evalGA cfg
 
-    -- output the average and best results as they're found
+    -- output the best fitnesses as they're found
     mapM_ (putStrLn . T.unpack) progress
 

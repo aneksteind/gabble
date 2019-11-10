@@ -27,25 +27,42 @@ instance Eq BinaryInd where
     (BI b1) == (BI b2) = b1 == b2
 
 
-mutate :: Double -> BinaryInd -> GAContext BinaryInd BinaryInd
-mutate p ind@(BI bs) = do
-        Config{mutationRateChr = rate} <- ask
+-- mutate a binary string representation
+mutate :: BinaryInd -> GAContext BinaryInd BinaryInd
+mutate ind@(BI bs) = do
+        -- grab individual and chromosome mutation rates
+        Config{mutationRateChr, mutationRateInd} <- ask
+        -- get a random double
         indp <- randomD
-        if indp < p then
-            fmap BI $ mapM (mutateBool rate) bs
-        else 
+        -- if the value is less than mutation rate for an individual
+        if indp < mutationRateInd then
+            -- mutate each bit with `mutationRateChr` probability
+            fmap BI $ mapM (mutateBool mutationRateChr) bs
+        else
+            -- return the unaltered individual
             return ind
 
+-- recombine two individuals from the population
 crossover :: BinaryInd -> BinaryInd -> GAContext BinaryInd BinaryInd
 crossover (BI i1) (BI i2) = do
-        -- get booleans specifying which gene to take
-        code <- replicateM (length i1) randomBool
-        let eitherOr = (\takeThis this that -> if takeThis then this else that)
-        return . BI $ zipWith3 eitherOr code i1 i2
+        -- get the crossover rate
+        Config{crossoverRate} <- ask
+        -- get a random double
+        indp <- randomD
+        if indp < crossoverRate then do -- perform crossover
+            -- get booleans specifying which gene to take
+            code <- replicateM (length i1) randomBool
+            -- choose genetic material from first or second parent
+            let eitherOr = (\takeThis this that -> if takeThis then this else that)
+            -- perform uniform crossover
+            return . BI $ zipWith3 eitherOr code i1 i2
+        else do
+            -- choose the genetic material from one of the parents
+            chooseFirstParent <- randomBool
+            return . BI $ if chooseFirstParent then i1 else i2
 
 -- create an individual, represented by a list, by
--- initializing its elements randomly;
--- each element must be mutatable
+-- initializing its elements randomly
 new :: GAContext BinaryInd BinaryInd
 new = fmap BI $ replicateM 500 randomBool
 
