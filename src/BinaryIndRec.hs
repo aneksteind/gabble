@@ -1,3 +1,5 @@
+{-# LANGUAGE NamedFieldPuns #-}
+
 module BinaryIndRec
     (
         BinaryIndRec (..),
@@ -12,11 +14,12 @@ import GA
 import Recursive
 import Data.Functor.Foldable (Fix (..), ListF (..), cata)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
-import Data.List (sort)
 import Control.Monad.RWS.Lazy (ask)
 import Data.Vector (Vector(..), fromList, toList)
+import qualified Data.Vector as V
+import Data.Vector.Algorithms.Merge (sort)
 
-data BinaryIndRec = BIR (Fix (ListF Bool))
+data BinaryIndRec = BIR [Bool]
 
 instance Eq BinaryIndRec where
     (BIR a) == (BIR b) = a == b
@@ -28,15 +31,13 @@ mutate :: Double -> BinaryIndRec -> GAContext BinaryIndRec BinaryIndRec
 mutate p (BIR ind) = return . BIR =<< newInd where
     newInd = do
         indp <- randomD
-        case indp < p of
-            True -> cataM mutateM ind
-            False -> return ind
-    mutateM :: AlgebraM (GAContext BinaryIndRec) (ListF Bool) (Fix (ListF Bool))
-    mutateM Nil = return $ nil
+        if indp < p then cataM mutateM ind else return ind
+    mutateM :: AlgebraM (GAContext BinaryIndRec) (ListF Bool) [Bool]
+    mutateM Nil = return $ []
     mutateM (Cons bool c) = do
         cfg <- ask
         mutated <- mutateBool (mutationRateChr cfg) bool
-        return $ cons mutated c
+        return $ mutated:c
 
 new :: GAContext BinaryIndRec BinaryIndRec
 new = (return . BIR) =<< anaM randomBools 500 where
@@ -53,22 +54,22 @@ score (BIR ind) = cata alg ind where
     alg Nil = 0.0
     alg (Cons i acc) = acc + if i then 1.0 else 0.0
 
--- goal: do a zipWith choose on a and b into a Fix (ListF Bool)
+
 crossover :: BinaryIndRec -> BinaryIndRec -> GAContext BinaryIndRec BinaryIndRec
 crossover (BIR p1) (BIR p2) = return . BIR =<< anaM f (p1,p2) where
-    f :: CoAlgebraM (GAContext BinaryIndRec) (ListF Bool) (Fix (ListF Bool), Fix (ListF Bool))
-    f (Fix Nil,_) = return Nil
-    f (_, Fix Nil) = return Nil
-    f (Fix (Cons b1 i1), Fix (Cons b2 i2)) = do
+    f :: CoAlgebraM (GAContext BinaryIndRec) (ListF Bool) ([Bool], [Bool])
+    f ([],_) = return Nil
+    f (_, []) = return Nil
+    f (b1:i1, b2:i2) = do
         takeFirst <- randomBool
         let b = if takeFirst then b1 else b2
         return $ Cons b (i1, i2)
 
 select :: Ord a => Vector a -> GAContext a (Vector a)
 select pop = do
-    cfg <- ask
-
-    let numToSelect = round $ (1.0 - crossoverRate cfg) * (fromIntegral $ popSize cfg)
-    let selectedParents = fromList . take numToSelect . reverse . sort $ toList pop
-
+    Config{popSize} <- ask
+    -- get the number of individuals to breed
+    let numToSelect = round $ 0.2 * (fromIntegral popSize)
+    -- select the individuals
+    let selectedParents = V.take numToSelect . V.reverse $ V.modify sort pop
     return selectedParents

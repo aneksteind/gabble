@@ -2,13 +2,10 @@
 
 module Main where
 
-import GA (evalGA, GAConfig(..), GASnapshot(..), logHOF, logNothing)
+import GA (evalGA, logHOF, GAConfig(..))
 import qualified BinaryInd as BI
 import qualified BinaryIndRec as BIR
-import BinaryIndRec (BinaryIndRec)
-import BinaryInd (BinaryInd)
 
-import qualified Data.Heap as Heap
 import qualified Data.Text as T
 
 main :: IO ()

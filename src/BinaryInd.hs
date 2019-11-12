@@ -72,11 +72,12 @@ score (BI bs) = fromIntegral . length . filter id $ bs
 
 select :: Ord a => Vector a -> GAContext a (Vector a)
 select pop = do
-    Config{crossoverRate, popSize} <- ask
-
+    -- get the population size
+    Config{popSize} <- ask
+    -- get the number of individuals to breed
     let numToSelect = round $ 0.2 * (fromIntegral popSize)
+    -- get the top 20% of the best-performing individuals
     let selectedParents = V.take numToSelect . V.reverse $ V.modify sort pop
-
     return selectedParents
 
     

@@ -125,7 +125,7 @@ toVector = return . embed
 -- creates a vector of random individuals
 makePopulation :: Int -> GAContext a (Vector a)
 makePopulation s = hyloM toVector addRandomInd s where
-    -- creates a random individual and add it to the collection
+    -- creates a random individual and adds it to the collection
     addRandomInd :: CoAlgebraM (GAContext a) (ListF a) Int
     addRandomInd 0 = return Nil
     addRandomInd n = do
@@ -166,13 +166,11 @@ insertHeap hof = cata insert where
 
 -- updates the HOF by removing the worst-fit individuals from the min-heap
 updateHOF :: Ord a => HOF a -> Vector a -> Int -> GAContext a (HOF a)
-updateHOF hof pop hofSize = return newHOF where
-    newHOF = if Heap.isEmpty hof
-            -- initialize the HOF with the `hofSize` best individuals
-            then Heap.fromList . take hofSize $ V.toList pop
-            -- update the HOF by adding this generation 
-            -- then removing worst `popSize` performers
-            else Heap.drop (length pop) $ insertHeap hof pop
+updateHOF hof pop hofSize = return . Heap.drop n $ oversizedHOF where
+    -- insert all of the current population
+    oversizedHOF = insertHeap hof pop
+    -- drop all but hofSize individuals
+    n = V.length pop - if Heap.isEmpty hof then hofSize else 0
 
 logNothing :: b -> GAContext a ()
 logNothing = const $ return ()
@@ -216,14 +214,14 @@ runN n f a = do
     a' <- f a
     runN (n-1) f a'
 
-runGA' :: Ord a => GAContext a (GASnapshot a)
-runGA' = do
+runGA :: Ord a => GAContext a (GASnapshot a)
+runGA = do
     Config {numGenerations, popSize, hofSize} <- ask
     -- initialize the population
     initialPop <- makePopulation popSize
     -- set up the initial Hall of Fame
     initialHOF <- updateHOF (Heap.empty :: HOF a) initialPop hofSize
-    -- set up the initial result
+    -- set up the initial snapshot
     let snapshot = Snapshot {
                 lastGeneration = initialPop,
                 hof = initialHOF,
@@ -238,8 +236,8 @@ evalGA cfg = newPureMT >>= (return . evalGASeed cfg)
 
 -- from a user-supplied rng, run the genetic algorithm
 evalGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, [T.Text])
-evalGASeed cfg rng = evalRWS (ctx runGA') cfg rng
+evalGASeed cfg rng = evalRWS (ctx runGA) cfg rng
 
 -- from a user-supplied rng, run the genetic algorithm and return the updated seed
 runGASeed :: Ord i => GAConfig i -> PureMT -> (GASnapshot i, PureMT, [T.Text])
-runGASeed cfg rng = runRWS (ctx runGA') cfg rng
+runGASeed cfg rng = runRWS (ctx runGA) cfg rng
