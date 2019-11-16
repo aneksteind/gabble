@@ -155,7 +155,7 @@ main = do
     mapM_ (putStrLn . T.unpack) progress
 ```
 
-##Contributing
+## Contributing
 
 Pull requests for the following will be considered:
 
