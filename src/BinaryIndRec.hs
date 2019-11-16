@@ -12,10 +12,10 @@ module BinaryIndRec
 
 import GA
 import Recursive
-import Data.Functor.Foldable (Fix (..), ListF (..), cata)
+import Data.Functor.Foldable (ListF (..), cata)
 import Data.Functor.Foldable.Exotic (cataM, anaM)
 import Control.Monad.RWS.Lazy (ask)
-import Data.Vector (Vector(..), fromList, toList)
+import Data.Vector (Vector(..))
 import qualified Data.Vector as V
 import Data.Vector.Algorithms.Merge (sort)
 
@@ -27,16 +27,17 @@ instance Eq BinaryIndRec where
 instance Ord BinaryIndRec where
     a `compare` b = (score a) `compare` (score b)
 
-mutate :: Double -> BinaryIndRec -> GAContext BinaryIndRec BinaryIndRec
-mutate p (BIR ind) = return . BIR =<< newInd where
+mutate :: BinaryIndRec -> GAContext BinaryIndRec BinaryIndRec
+mutate (BIR ind) = return . BIR =<< newInd where
     newInd = do
+        Config{mutationRateInd} <- ask
         indp <- randomD
-        if indp < p then cataM mutateM ind else return ind
+        if indp < mutationRateInd then cataM mutateM ind else return ind
     mutateM :: AlgebraM (GAContext BinaryIndRec) (ListF Bool) [Bool]
     mutateM Nil = return $ []
     mutateM (Cons bool c) = do
-        cfg <- ask
-        mutated <- mutateBool (mutationRateChr cfg) bool
+        Config{mutationRateChr} <- ask
+        mutated <- mutateBool mutationRateChr bool
         return $ mutated:c
 
 new :: GAContext BinaryIndRec BinaryIndRec
