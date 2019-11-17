@@ -60,7 +60,7 @@ data GAConfig i = Config {
     -- the probability an individual is mutated
     mutationRateInd :: Double 
     -- the probability a chromosome of an individual is mutated
-  , mutationRateChr :: Double 
+  , mutationRateGene :: Double 
     -- the percentage of the population that gets replaced through recombination
   , crossoverRate :: Double 
     -- the population size

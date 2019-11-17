@@ -36,8 +36,8 @@ mutate (BIR ind) = return . BIR =<< newInd where
     mutateM :: AlgebraM (GAContext BinaryIndRec) (ListF Bool) [Bool]
     mutateM Nil = return $ []
     mutateM (Cons bool c) = do
-        Config{mutationRateChr} <- ask
-        mutated <- mutateBool mutationRateChr bool
+        Config{mutationRateGene} <- ask
+        mutated <- mutateBool mutationRateGene bool
         return $ mutated:c
 
 new :: GAContext BinaryIndRec BinaryIndRec

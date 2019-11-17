@@ -13,7 +13,7 @@ main = do
 
     let cfg = Config {
         mutationRateInd = 0.8
-      , mutationRateChr = 0.02
+      , mutationRateGene = 0.02
       , crossoverRate = 0.7
       , popSize = 100
       , mutate = BI.mutate

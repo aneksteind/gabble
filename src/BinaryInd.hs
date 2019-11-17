@@ -31,13 +31,13 @@ instance Eq BinaryInd where
 mutate :: BinaryInd -> GAContext BinaryInd BinaryInd
 mutate ind@(BI bs) = do
         -- grab individual and chromosome mutation rates
-        Config{mutationRateChr, mutationRateInd} <- ask
+        Config{mutationRateGene, mutationRateInd} <- ask
         -- get a random double
         indp <- randomD
         -- if the value is less than mutation rate for an individual
         if indp < mutationRateInd then
-            -- mutate each bit with `mutationRateChr` probability
-            fmap BI $ mapM (mutateBool mutationRateChr) bs
+            -- mutate each bit with `mutationRateGene` probability
+            fmap BI $ mapM (mutateBool mutationRateGene) bs
         else
             -- return the unaltered individual
             return ind

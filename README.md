@@ -18,7 +18,7 @@ data GAConfig i = Config {
     -- the probability an individual is mutated
     mutationRateInd :: Double 
     -- the probability a chromosome of an individual is mutated
-  , mutationRateChr :: Double 
+  , mutationRateGene :: Double 
     -- the percentage of the population that gets replaced through recombination
   , crossoverRate :: Double 
     -- the population size
@@ -77,13 +77,13 @@ instance Eq BinaryInd where
 mutate :: BinaryInd -> GAContext BinaryInd BinaryInd
 mutate ind@(BI bs) = do
         -- grab individual and chromosome mutation rates
-        Config{mutationRateChr, mutationRateInd} <- ask
+        Config{mutationRateGene, mutationRateInd} <- ask
         -- get a random double
         indp <- randomD
         -- if the value is less than mutation rate for an individual
         if indp < mutationRateInd then
-            -- mutate each bit with `mutationRateChr` probability
-            fmap BI $ mapM (mutateBool mutationRateChr) bs
+            -- mutate each bit with `mutationRateGene` probability
+            fmap BI $ mapM (mutateBool mutationRateGene) bs
         else
             -- return the unaltered individual
             return ind
@@ -135,7 +135,7 @@ main = do
 
     let cfg = Config {
         mutationRateInd = 0.8
-      , mutationRateChr = 0.02
+      , mutationRateGene = 0.02
       , crossoverRate = 0.7
       , popSize = 100
       , mutate = BI.mutate
