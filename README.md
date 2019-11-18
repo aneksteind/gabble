@@ -17,7 +17,7 @@ Users can define their own individuals and mutation operators or utilize the (li
 data GAConfig i = Config {
     -- the probability an individual is mutated
     mutationRateInd :: Double 
-    -- the probability a chromosome of an individual is mutated
+    -- the probability a gene of an individual is mutated
   , mutationRateGene :: Double 
     -- the percentage of the population that gets replaced through recombination
   , crossoverRate :: Double 
@@ -76,7 +76,7 @@ instance Eq BinaryInd where
 -- mutate a binary string representation
 mutate :: BinaryInd -> GAContext BinaryInd BinaryInd
 mutate ind@(BI bs) = do
-        -- grab individual and chromosome mutation rates
+        -- grab individual and gene mutation rates
         Config{mutationRateGene, mutationRateInd} <- ask
         -- get a random double
         indp <- randomD
