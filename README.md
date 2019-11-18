@@ -1,4 +1,4 @@
-# gabble
+# gabble [![Build Status](https://travis-ci.com/aneksteind/gabble.svg?branch=dev-0.1.0.0)](https://travis-ci.com/aneksteind/gabble)
 
 A small genetic algorithm library meant for prototyping various individual representations and genetic operators.
 
